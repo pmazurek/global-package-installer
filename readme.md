@@ -1,5 +1,5 @@
 
 
 
-![](https://raw.github.com/pmazurek/gpi/master/demo.gif)
+![](https://raw.github.com/pmazurek/global-package-installer/master/demo.gif)
 
