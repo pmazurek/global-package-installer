@@ -3,7 +3,10 @@ import platform
 import sys
 import os
 import io
+import re
 import time
+
+import requests
 
 from gpi import settings
 
@@ -38,6 +41,72 @@ def execute_command_with_live_output(command):
         print(output.decode('UTF-8'))
     rc = process.poll()
 
+
+class PipPort:
+
+    commands = {
+        'install': 'pip install {}',
+        'uninstall': 'pip uninstall -y {}',
+        'list-installed': 'pip list',
+        'show': 'fzf'
+    }
+
+    index_url = 'https://pypi.org/simple/'
+
+    def __init__(self):
+        self.dot_dir = os.path.expanduser(settings.DOT_DIR)
+        self.cache_path = self.dot_dir + '/pypi.cache'
+
+    def list_packages(self, installed):
+        if installed:
+            raw_lines = execute_command(self.commands['list-installed'])
+            lines = raw_lines.split("\n")[2:] # ignoring top two lines
+            packages = []
+            for line in lines:
+                packages.append(line.strip().split()[0])
+
+            return packages
+
+        if not os.path.exists(self.cache_path):
+            print('Generating pip cache')
+            response = requests.get(self.index_url)
+            all_packages = re.findall('href="/simple/([^/]*)/', response.text)
+            self.save_package_cache(all_packages)
+            return all_packages
+        else:
+            with open(self.cache_path) as f:
+                packages = f.read().splitlines()
+
+            return packages
+
+    def save_package_cache(self, packages):
+        f = open(self.cache_path, 'w')
+        f.write("\n".join(packages))
+        f.flush()
+        os.fsync(f.fileno())
+        f.close()
+
+    def entrypoint(self, uninstall=False):
+        if uninstall:
+            packages = self.list_packages(installed=True)
+            fuzzysearch_bash_command = 'echo "{}" | {}'.format(
+                "\n".join(packages),
+                self.commands['show']
+            )
+            chosen_package = execute_command_interactive(fuzzysearch_bash_command)
+            execute_command_with_live_output(
+                self.commands['uninstall'].format(chosen_package)
+            )
+        else:
+            packages = self.list_packages(installed=False)
+            fuzzysearch_bash_command = 'cat "{}" | {}'.format(
+                self.cache_path,
+                self.commands['show']
+            )
+            chosen_package = execute_command_interactive(fuzzysearch_bash_command)
+            execute_command_with_live_output(
+                self.commands['install'].format(chosen_package)
+            )
 
 class UbuntuPort:
 
@@ -139,15 +208,23 @@ def detect_package_manager():
 
 package_manager_mappings = {
     'apt': UbuntuPort,
+    'pip': PipPort,
 }
 
-def entrypoint():
-    package_manager = detect_package_manager()
+def entrypoint_install():
+    main_entrypoint(uninstall=False)
+
+def entrypoint_remove():
+    main_entrypoint(uninstall=True)
+
+def main_entrypoint(uninstall):
+    if len(sys.argv) > 1 and sys.argv[1] in ['pip']:
+        package_manager = sys.argv[1]
+    else:
+        package_manager = detect_package_manager()
+
     port_class = package_manager_mappings[package_manager]
     port = port_class()
-    uninstall = False
-    if len(sys.argv) > 1 and sys.argv[1] == '-u':
-        uninstall = True
 
     port.entrypoint(uninstall=uninstall)
 

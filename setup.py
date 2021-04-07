@@ -9,12 +9,12 @@ setup(
     author='Piotr Mazurek',
     packages=['gpi'],
     install_requires=[
-        ''
+        'requests'
     ],
     entry_points=dict(
         console_scripts=[
-            'gpi = gpi.main:entrypoint',
-            'ap = gpi.main:entrypoint',
+            'ap = gpi.main:entrypoint_install',
+            'rp = gpi.main:entrypoint_remove',
         ]
     )
 )
